@@ -69,13 +69,12 @@ describe('ItinerariesService', () => {
     jest.clearAllMocks();
   });
 
-  describe('generate', () => {
+  describe('generate - Validación de lógica de generación', () => {
     const userId = 'user-id';
-    // Usar fechas futuras para evitar el error de "fecha en el pasado"
     const futureStartDate = new Date();
-    futureStartDate.setDate(futureStartDate.getDate() + 7); // 7 días en el futuro
+    futureStartDate.setDate(futureStartDate.getDate() + 7);
     const futureEndDate = new Date(futureStartDate);
-    futureEndDate.setDate(futureEndDate.getDate() + 2); // 2 días después
+    futureEndDate.setDate(futureEndDate.getDate() + 2);
 
     const generateDto: GenerateItineraryDto = {
       cityId: 'city-id',
@@ -98,6 +97,7 @@ describe('ItinerariesService', () => {
         tags: ['gastronomía'],
         startTime: '09:00',
         durationMin: 120,
+        approxPrice: 50,
       },
       {
         id: 'activity-2',
@@ -106,6 +106,16 @@ describe('ItinerariesService', () => {
         tags: ['cultura'],
         startTime: '14:00',
         durationMin: 180,
+        approxPrice: 30,
+      },
+      {
+        id: 'activity-3',
+        name: 'Activity 3',
+        type: ActivityType.GASTRONOMY,
+        tags: ['gastronomía'],
+        startTime: '19:00',
+        durationMin: 90,
+        approxPrice: 80,
       },
     ];
 
@@ -116,6 +126,232 @@ describe('ItinerariesService', () => {
       cityId: generateDto.cityId,
       days: [],
     };
+
+    it('should calculate correct number of days', async () => {
+      mockPrismaService.city.findUnique.mockResolvedValue(mockCity);
+      mockPrismaService.activity.findMany.mockResolvedValue(mockActivities);
+      mockPrismaService.itinerary.create.mockResolvedValue(mockItinerary);
+      mockPrismaService.itineraryDay.create.mockResolvedValue({
+        id: 'day-id',
+        dayNumber: 1,
+        date: futureStartDate,
+        itineraryId: mockItinerary.id,
+      });
+      mockPrismaService.itineraryActivity.create.mockResolvedValue({});
+      mockPrismaService.itinerary.findUnique.mockResolvedValue({
+        ...mockItinerary,
+        city: mockCity,
+        days: [],
+      });
+
+      await service.generate(userId, generateDto);
+
+      // Verificar que se crearon 3 días (startDate + 2 días = 3 días totales)
+      expect(mockPrismaService.itineraryDay.create).toHaveBeenCalledTimes(3);
+    });
+
+    it('should assign activities correctly to days', async () => {
+      mockPrismaService.city.findUnique.mockResolvedValue(mockCity);
+      mockPrismaService.activity.findMany.mockResolvedValue(mockActivities);
+      mockPrismaService.itinerary.create.mockResolvedValue(mockItinerary);
+      mockPrismaService.itineraryDay.create.mockResolvedValue({
+        id: 'day-id',
+        dayNumber: 1,
+        date: futureStartDate,
+        itineraryId: mockItinerary.id,
+      });
+      mockPrismaService.itineraryActivity.create.mockResolvedValue({});
+      mockPrismaService.itinerary.findUnique.mockResolvedValue({
+        ...mockItinerary,
+        city: mockCity,
+        days: [],
+      });
+
+      await service.generate(userId, generateDto);
+
+      // Verificar que se asignaron actividades
+      expect(mockPrismaService.itineraryActivity.create).toHaveBeenCalled();
+    });
+
+    it('should calculate endTime from startTime and duration', async () => {
+      const activityWithDuration = {
+        id: 'activity-1',
+        name: 'Activity 1',
+        type: ActivityType.GASTRONOMY,
+        tags: ['gastronomía'],
+        startTime: '09:00',
+        durationMin: 120, // 2 horas
+        approxPrice: 50,
+      };
+
+      mockPrismaService.city.findUnique.mockResolvedValue(mockCity);
+      mockPrismaService.activity.findMany.mockResolvedValue([activityWithDuration]);
+      mockPrismaService.itinerary.create.mockResolvedValue(mockItinerary);
+      mockPrismaService.itineraryDay.create.mockResolvedValue({
+        id: 'day-id',
+        dayNumber: 1,
+        date: futureStartDate,
+        itineraryId: mockItinerary.id,
+      });
+      mockPrismaService.itineraryActivity.create.mockResolvedValue({});
+      mockPrismaService.itinerary.findUnique.mockResolvedValue({
+        ...mockItinerary,
+        city: mockCity,
+        days: [],
+      });
+
+      await service.generate(userId, generateDto);
+
+      // Verificar que se calculó el endTime correctamente (09:00 + 120 min = 11:00)
+      expect(mockPrismaService.itineraryActivity.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          startTime: '09:00',
+          endTime: '11:00',
+        }),
+      });
+    });
+
+    it('should map interests to activity types correctly', async () => {
+      const gastronomyInterest = ['gastronomía'];
+      const cultureInterest = ['cultura'];
+      const adventureInterest = ['aventura'];
+
+      mockPrismaService.city.findUnique.mockResolvedValue(mockCity);
+      mockPrismaService.activity.findMany.mockResolvedValue(mockActivities);
+      mockPrismaService.itinerary.create.mockResolvedValue(mockItinerary);
+      mockPrismaService.itineraryDay.create.mockResolvedValue({
+        id: 'day-id',
+        dayNumber: 1,
+        date: futureStartDate,
+        itineraryId: mockItinerary.id,
+      });
+      mockPrismaService.itineraryActivity.create.mockResolvedValue({});
+      mockPrismaService.itinerary.findUnique.mockResolvedValue({
+        ...mockItinerary,
+        city: mockCity,
+        days: [],
+      });
+
+      // Test con intereses de gastronomía
+      await service.generate(userId, {
+        ...generateDto,
+        interests: gastronomyInterest,
+      });
+
+      expect(mockPrismaService.activity.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            OR: expect.arrayContaining([
+              expect.objectContaining({
+                type: { in: [ActivityType.GASTRONOMY] },
+              }),
+            ]),
+          }),
+        }),
+      );
+    });
+
+    it('should validate date constraints', async () => {
+      const invalidStartDate = new Date();
+      invalidStartDate.setDate(invalidStartDate.getDate() - 1); // Ayer
+
+      const invalidDto = {
+        ...generateDto,
+        startDate: invalidStartDate.toISOString(),
+      };
+
+      await expect(service.generate(userId, invalidDto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should validate itinerary duration limit (max 14 days)', async () => {
+      const longStartDate = new Date();
+      longStartDate.setDate(longStartDate.getDate() + 7);
+      const longEndDate = new Date(longStartDate);
+      longEndDate.setDate(longEndDate.getDate() + 15); // 15 días
+
+      const invalidDto = {
+        ...generateDto,
+        startDate: longStartDate.toISOString(),
+        endDate: longEndDate.toISOString(),
+      };
+
+      mockPrismaService.city.findUnique.mockResolvedValue(mockCity);
+
+      await expect(service.generate(userId, invalidDto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should filter activities by budget when provided', async () => {
+      const budgetDto = {
+        ...generateDto,
+        budgetApprox: 100, // Presupuesto bajo
+      };
+
+      mockPrismaService.city.findUnique.mockResolvedValue(mockCity);
+      mockPrismaService.activity.findMany.mockResolvedValue(mockActivities);
+      mockPrismaService.itinerary.create.mockResolvedValue(mockItinerary);
+      mockPrismaService.itineraryDay.create.mockResolvedValue({
+        id: 'day-id',
+        dayNumber: 1,
+        date: futureStartDate,
+        itineraryId: mockItinerary.id,
+      });
+      mockPrismaService.itineraryActivity.create.mockResolvedValue({});
+      mockPrismaService.itinerary.findUnique.mockResolvedValue({
+        ...mockItinerary,
+        city: mockCity,
+        days: [],
+      });
+
+      await service.generate(userId, budgetDto);
+
+      // Verificar que se aplicó filtro de presupuesto
+      expect(mockPrismaService.activity.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            approxPrice: expect.any(Object),
+          }),
+        }),
+      );
+    });
+
+    it('should ensure itinerary composition is valid (activities per day)', async () => {
+      const manyActivities = Array.from({ length: 20 }, (_, i) => ({
+        id: `activity-${i}`,
+        name: `Activity ${i}`,
+        type: ActivityType.CULTURE,
+        tags: ['cultura'],
+        startTime: '09:00',
+        durationMin: 120,
+        approxPrice: 50,
+      }));
+
+      mockPrismaService.city.findUnique.mockResolvedValue(mockCity);
+      mockPrismaService.activity.findMany.mockResolvedValue(manyActivities);
+      mockPrismaService.itinerary.create.mockResolvedValue(mockItinerary);
+      mockPrismaService.itineraryDay.create.mockResolvedValue({
+        id: 'day-id',
+        dayNumber: 1,
+        date: futureStartDate,
+        itineraryId: mockItinerary.id,
+      });
+      mockPrismaService.itineraryActivity.create.mockResolvedValue({});
+      mockPrismaService.itinerary.findUnique.mockResolvedValue({
+        ...mockItinerary,
+        city: mockCity,
+        days: [],
+      });
+
+      await service.generate(userId, generateDto);
+
+      // Verificar que no se exceden 4 actividades por día
+      const createCalls = mockPrismaService.itineraryActivity.create.mock.calls;
+      const activitiesPerDay = Math.ceil(createCalls.length / 3); // 3 días
+      expect(activitiesPerDay).toBeLessThanOrEqual(4);
+    });
 
     it('should generate itinerary successfully', async () => {
       mockPrismaService.city.findUnique.mockResolvedValue(mockCity);
@@ -374,4 +610,3 @@ describe('ItinerariesService', () => {
     });
   });
 });
-

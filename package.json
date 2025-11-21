@@ -17,6 +17,9 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+    "test:unit": "jest --testPathPattern=spec.ts",
+    "test:integration": "jest --testPathPattern=integration",
+    "test:contract": "jest --testPathPattern=contract",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -76,27 +79,38 @@
       "json",
       "ts"
     ],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
+    "rootDir": ".",
+    "testMatch": [
+      "**/*.spec.ts",
+      "**/*.integration.spec.ts",
+      "**/*.contract.spec.ts"
+    ],
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/dist/"
+    ],
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s",
-      "!**/*.spec.ts",
-      "!**/*.dto.ts",
-      "!**/main.ts",
-      "!**/prisma/**",
-      "!**/*.module.ts",
-      "!**/*.controller.ts"
+      "src/**/*.(t|j)s",
+      "!src/**/*.spec.ts",
+      "!src/**/*.dto.ts",
+      "!src/main.ts",
+      "!src/prisma/**",
+      "!src/**/*.module.ts",
+      "!src/**/*.controller.ts"
     ],
-    "coverageDirectory": "../coverage",
+    "coverageDirectory": "coverage",
     "coverageReporters": [
       "text",
       "lcov",
       "html"
     ],
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    }
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

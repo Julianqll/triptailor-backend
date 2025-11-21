@@ -55,8 +55,26 @@ jobs:
       - name: Generar Prisma Client
         run: npm run prisma:generate
 
-      - name: Run tests con cobertura
+      - name: Run unit tests con cobertura
         run: npm run test:cov
+        env:
+          DATABASE_URL: "postgresql://trip_tailor_user:password@localhost:5432/trip_tailor_db?schema=public"
+          JWT_SECRET: "test-secret-key-for-ci"
+          REDIS_HOST: "localhost"
+          REDIS_PORT: "6379"
+          PORT: "3000"
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          DATABASE_URL: "postgresql://trip_tailor_user:password@localhost:5432/trip_tailor_db?schema=public"
+          JWT_SECRET: "test-secret-key-for-ci"
+          REDIS_HOST: "localhost"
+          REDIS_PORT: "6379"
+          PORT: "3000"
+
+      - name: Run contract tests
+        run: npm run test:contract
         env:
           DATABASE_URL: "postgresql://trip_tailor_user:password@localhost:5432/trip_tailor_db?schema=public"
           JWT_SECRET: "test-secret-key-for-ci"
