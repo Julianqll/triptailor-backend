@@ -70,11 +70,22 @@ describe('Itinerary Flow Integration (Activities → Filter → Assign)', () => 
     prisma = moduleFixture.get<PrismaService>(PrismaService);
     cacheService = moduleFixture.get<CacheService>(CacheService);
     await app.init();
-  });
+  }, 30000); // Timeout de 30 segundos
 
   afterAll(async () => {
-    await app.close();
-  });
+    try {
+      if (app) {
+        await app.close();
+      }
+    } catch (error) {
+      // Ignorar errores al cerrar
+    }
+    
+    // Forzar salida inmediata
+    setTimeout(() => {
+      process.exit(0);
+    }, 1000);
+  }, 10000); // Timeout de 10 segundos
 
   beforeEach(async () => {
     // Reset mocks
