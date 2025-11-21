@@ -7,6 +7,7 @@ import { ActivitiesModule } from './activities/activities.module';
 import { ItinerariesModule } from './itineraries/itineraries.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { CacheModule } from './cache/cache.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PrismaModule } from './prisma/prisma.module';
       isGlobal: true,
     }),
     PrismaModule,
+    CacheModule,
     AuthModule,
     UsersModule,
     CitiesModule,

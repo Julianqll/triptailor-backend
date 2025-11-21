@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
 import { GenerateItineraryDto } from './dto/generate-itinerary.dto';
 import { UpdateItineraryDto } from './dto/update-itinerary.dto';
 import { FilterItinerariesDto } from './dto/filter-itineraries.dto';
@@ -12,7 +13,10 @@ import { ActivityType } from '@prisma/client';
 
 @Injectable()
 export class ItinerariesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cacheService: CacheService,
+  ) {}
 
   // Mapeo de intereses (strings) a tipos de actividad
   private mapInterestToActivityType(interest: string): ActivityType | null {
@@ -190,11 +194,26 @@ export class ItinerariesService {
     }
 
     // Retornar el itinerario completo
-    return this.findOne(userId, itinerary.id);
+    const result = await this.findOne(userId, itinerary.id);
+
+    // Cachear el itinerario generado (TTL de 1 hora para itinerarios generados)
+    await this.cacheService.set(`itinerary:${itinerary.id}`, result, 3600);
+
+    // Nota: El cache de listados expirará automáticamente después del TTL
+
+    return result;
   }
 
   async findAll(userId: string, filters: FilterItinerariesDto) {
     const { page = 1, limit = 10 } = filters;
+    const cacheKey = `itineraries:${userId}:${page}:${limit}`;
+
+    // Intentar obtener del cache
+    const cached = await this.cacheService.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const skip = (page - 1) * limit;
 
     const [itineraries, total] = await Promise.all([
@@ -229,7 +248,7 @@ export class ItinerariesService {
       }),
     ]);
 
-    return {
+    const result = {
       data: itineraries,
       meta: {
         total,
@@ -238,9 +257,26 @@ export class ItinerariesService {
         totalPages: Math.ceil(total / limit),
       },
     };
+
+    // Guardar en cache (5 minutos)
+    await this.cacheService.set(cacheKey, result, 300);
+
+    return result;
   }
 
   async findOne(userId: string, id: string) {
+    const cacheKey = `itinerary:${id}`;
+
+    // Intentar obtener del cache
+    const cached = await this.cacheService.get<any>(cacheKey);
+    if (cached) {
+      // Verificar que el itinerario pertenece al usuario (incluso si está en cache)
+      if (cached.userId !== userId) {
+        throw new ForbiddenException('No tienes permiso para acceder a este itinerario');
+      }
+      return cached;
+    }
+
     const itinerary = await this.prisma.itinerary.findUnique({
       where: { id },
       include: {
@@ -288,6 +324,9 @@ export class ItinerariesService {
       throw new ForbiddenException('No tienes permiso para acceder a este itinerario');
     }
 
+    // Guardar en cache (5 minutos)
+    await this.cacheService.set(cacheKey, itinerary, 300);
+
     return itinerary;
   }
 
@@ -304,7 +343,7 @@ export class ItinerariesService {
       throw new ForbiddenException('No tienes permiso para actualizar este itinerario');
     }
 
-    return this.prisma.itinerary.update({
+    const updated = await this.prisma.itinerary.update({
       where: { id },
       data: updateDto,
       include: {
@@ -329,6 +368,12 @@ export class ItinerariesService {
         },
       },
     });
+
+    // Invalidar cache del itinerario específico
+    await this.cacheService.del(`itinerary:${id}`);
+    // Nota: El cache de listados expirará automáticamente después del TTL
+
+    return updated;
   }
 
   async remove(userId: string, id: string) {
@@ -348,6 +393,10 @@ export class ItinerariesService {
     await this.prisma.itinerary.delete({
       where: { id },
     });
+
+    // Invalidar cache del itinerario específico
+    await this.cacheService.del(`itinerary:${id}`);
+    // Nota: El cache de listados expirará automáticamente después del TTL
 
     return { message: 'Itinerario eliminado exitosamente' };
   }
